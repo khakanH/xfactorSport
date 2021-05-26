@@ -1,0 +1,552 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+
+
+use App\Models\UserType;
+use App\Models\UserRole;
+use App\Models\User;
+use App\Models\Modules;
+use App\Models\Items;
+use App\Models\Members;
+use App\Models\Supplier;
+use App\Models\Sales;
+use DB;
+
+use Auth;
+
+class PurchaseController extends Controller
+{
+    public function __construct(Request $request)
+    {   
+        // dd('herererer');
+    }
+
+    public function AddItems(Request $request)
+    {	
+        try 
+        {
+            $supplier_data = Supplier::get();
+
+            return view('purchase.add-items',compact('supplier_data'));
+        } 
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+
+    public function ViewPurchaseItems(Request $request){
+        try{
+            $purchase_data = Items::get();
+            $purchase_data = DB::table('items')
+            ->join('supplier', 'items.supplier', '=', 'supplier.supplier_id')
+            ->select('items.*', 'supplier.supplier_id', 'supplier.supplier_name')
+            ->get();
+            return view('purchase.view-purchase-items',compact('purchase_data'));
+        }
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+    public function AddStock(Request $request){
+        try 
+        {	
+            $supplier_data = Supplier::get();
+            $products = Items::get();
+            return view('purchase.add-stock',compact('supplier_data', 'products'));
+        }
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }    
+    }
+
+    //Data Functions
+    public function SaveStock(Request $request){
+        try 
+        {	
+            $input = $request->all();
+            $items_qty = Items::where('item_id', $_POST['Items'])->first();
+            $total_qty = $items_qty->qty + $_POST['item_qty'];
+            if(Items::where('item_id', $_POST['Items'])->update([
+                'batch'	 => $_POST['item_batch'],
+                'expiry_date'	 => $_POST['expiry_date'],
+                'qty'	 => $total_qty,
+                'colors' => $_POST['item_color'],
+                'created_at' => date("Y-m-d H:i:s"),
+                'updated_at' => date("Y-m-d H:i:s"),
+            ]))
+    {
+          return redirect()->route('purchase.add-new-stock')->with('success','Items Added Successfully.');
+    }	
+    else
+    {
+          return redirect()->back()->withInput()->with('failed','Something went wrong. Try again later.');
+    }
+
+            // return view('purchase.add-stock',compact('supplier_data'));
+        }
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        } 
+    }
+    public function SaveItems(Request $request)
+    {	
+        try 
+        {	
+            $input = $request->all();
+            // dd($input);
+            if(Items::where('items',trim(strtolower($input['item_name'])))->count() > 0)
+            {
+	          	return redirect()->back()->withInput()->with('failed','Item Already Exist.');
+            }
+
+
+            $image= $request->file('image');
+            if (empty($image)) 
+            {
+                $path = "users/default_user_icon.png";
+            }
+                else
+                {
+
+                    $input['imagename'] =  uniqid().".".$image->getClientOriginalExtension();
+                    // dd($input);
+                   
+                    $destinationPath = public_path('/images/users');
+
+                    if($image->move($destinationPath, $input['imagename']))
+                    {
+                            $path =  'users/'.$input['imagename'];
+                    }
+                    else
+                    {
+                            return redirect()->back()->withInput()->with("failed","Something Went Wrong for Image Uploading");
+                    }
+
+                }
+
+
+            if(Items::insert([
+                        'items' 		 => $input['item_name'],
+                        'type' 	 => $input['type'],
+                        'supplier' 	 => $input['supplier'],
+                        'batch'	 => '',
+                        'size'	 => $input['item_size'],
+                        'expiry_date'	 => '',
+                        'item_img'	 => $path,
+                        'colors' => $input['item_color'],
+                        'qty'	 => '',
+                        'sale_price'	 => $input['sale_price'],
+                        'purchase_price'	 => $input['purchase_price'],
+                        'created_at' => date("Y-m-d H:i:s"),
+                        'updated_at' => date("Y-m-d H:i:s"),
+                    ]))
+            {
+	          	return redirect()->route('purchase.add-items')->with('success','Items Added Successfully.');
+            }	
+            else
+            {
+	          	return redirect()->back()->withInput()->with('failed','Something went wrong. Try again later.');
+            }
+	    	
+        } 
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+
+    public function EditUserType(Request $request,$id)
+    {	
+        try 
+        {
+        	$user_type = UserType::where('id',$id)->first();
+
+         	return view('user.edit_type',compact('user_type'));
+        } 
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+
+    public function UpdateUserType(Request $request)
+    {	
+        try 
+        {
+            $input = $request->all();
+          	
+          	if (UserType::where('name',trim(strtolower($input['name'])))->where('id','!=',$input['id'])->count() > 0) 
+          	{
+          		return redirect()->back()->withInput()->with('failed','User Type Already Exists');
+          	}
+          	else
+          	{
+          		if(UserType::where('id',$input['id'])->update(array('name'=>trim(strtolower($input['name'])))))
+          		{
+	          		return redirect()->route('user.type-list')->with('success','User Type Updated Successfully');
+          		}
+          		else
+          		{
+	          		return redirect()->back()->withInput()->with('failed','Something went wrong. Try again later');
+          		}
+          	}
+
+        } 
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+
+    public function DeleteUserType(Request $request,$id)
+    {	
+        try 
+        {
+        	if(UserType::where('id',$id)->delete())
+        	{
+	          	return redirect()->route('user.type-list')->with('success','User Type Deleted Successfully');
+        	}
+        	else
+        	{
+				return redirect()->back()->with('failed','Something went wrong. Try again later');
+        	}
+        } 
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+
+    public function UserTypeList(Request $request)
+    {	
+        try 
+        {
+        	$user_type = UserType::get();
+       		return view('user.type_list',compact('user_type'));
+        } 
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+
+   public function SalesView(Request $request){
+    try{
+        $sales = Sales::get();
+        return view('cafeteria.sales_view',compact('sales'));
+    }
+    catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+   }
+   public function DeleteSales(Request $request,$id)
+    {	
+        try 
+        {
+        	if(Sales::where('sale_id',$id)->delete())
+        	{
+	          	return redirect()->route('cafeteria.sales-view')->with('success','Sales Deleted Successfully');
+        	}
+        	else
+        	{
+				return redirect()->back()->with('failed','Something went wrong. Try again later');
+        	}
+        } 
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+    public function AddCafeteria(Request $request)
+    {	
+        try 
+        {
+        	$products = Items::get();
+        	return view('cafeteria.add-cafeteria',compact('products'));
+          
+        } 
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+
+    public function SaveUser(Request $request)
+    {	
+        try 
+        {	
+            $input = $request->all();
+
+            if(User::where('email',trim(strtolower($input['email'])))->where('user_type',$input['type'])->count() > 0)
+            {
+	          	return redirect()->back()->withInput()->with('failed','User Email Address Already Exist.');
+            }
+
+
+            $image= $request->file('image');
+            if (empty($image)) 
+            {
+                $path = "users/default_user_icon.png";
+            }
+                else
+                {
+
+                    $input['imagename'] =  uniqid().$image->getClientOriginalExtension();
+                   
+                    $destinationPath = public_path('/images/users');
+
+                    if($image->move($destinationPath, $input['imagename']))
+                    {
+                            $path =  'users/'.$input['imagename'];
+                    }
+                    else
+                    {
+                            return redirect()->back()->withInput()->with("failed","Something Went Wrong for Image Uploading");
+                    }
+
+                }
+
+
+            if(User::insert([
+                        'name' 		 => $input['name'],
+                        'email' 	 => trim(strtolower($input['email'])),
+                        'password' 	 => Hash::make($input['password']),
+                        'user_type'	 => $input['type'],
+                        'profile_image'	 => $path,
+                        'created_at' => date("Y-m-d H:i:s"),
+                        'updated_at' => date("Y-m-d H:i:s"),
+                    ]))
+            {
+	          	return redirect()->route('user.add-user')->with('success','User Added Successfully.');
+            }	
+            else
+            {
+	          	return redirect()->back()->withInput()->with('failed','Something went wrong. Try again later.');
+            }
+	    	
+        } 
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+
+    public function DeleteUser(Request $request,$id)
+    {	
+        try 
+        {
+          	if(User::where('id',$id)->delete())
+        	{
+	          	return redirect()->route('user.user-list')->with('success','User Deleted Successfully');
+        	}
+        	else
+        	{
+				return redirect()->back()->with('failed','Something went wrong. Try again later');
+        	}
+          
+        } 
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+
+	public function UserList(Request $request)
+    {	
+        try 
+        {
+        	$user = User::where('id','!=',Auth::user()->id)->get();
+        	return view('user.user_list',compact('user'));
+        } 
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+    public function UserRoles(Request $request)
+    {	
+        try 
+        {	
+        	$user_type = UserType::orderBy('id','asc')->get();
+            if (count($user_type) == 0) 
+            {
+                return redirect()->route('user.add-type')->with('failed','Kindly Add User Type First.');
+            }
+
+            $type = $user_type[0]['id'];
+
+            $all_modules = Modules::where('parent_id',0)->get();
+            $all_sub_modules = array();
+            foreach ($all_modules as $key) 
+            {
+                $all_sub_modules[] = Modules::where('parent_id',$key['id'])->get();
+            }
+
+            $user_role = UserRole::where('user_type',$type)->pluck('module_id')->toArray();
+
+
+            return view('user.user_role',compact('user_type','all_modules','all_sub_modules','user_role','type'));
+        } 
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+
+    public function GetUserRoles(Request $request,$type)
+    {	
+        try 
+        {
+        	$user_type = UserType::orderBy('id','asc')->get();
+            if (count($user_type) == 0) 
+            {
+                return redirect()->route('user.add-type')->with('failed','Kindly Add User Type First.');
+            }
+
+
+            $all_modules = Modules::where('parent_id',0)->get();
+            $all_sub_modules = array();
+            foreach ($all_modules as $key) 
+            {
+                $all_sub_modules[] = Modules::where('parent_id',$key['id'])->get();
+            }
+
+            $user_role = UserRole::where('user_type',$type)->pluck('module_id')->toArray();
+
+
+            return view('user.user_role',compact('user_type','all_modules','all_sub_modules','user_role','type'));
+        } 
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+
+    public function SaveUserRoles(Request $request)
+    {
+        try 
+        {   
+            $input = $request->all();    
+           
+            UserRole::where('user_type',$input['user_type_id'])->delete();
+            
+            if (isset($input['main_module-cb'])) 
+            {
+
+                foreach ($input['main_module-cb'] as $key) 
+                {
+                    UserRole::insert(array(
+                            'user_type' => $input['user_type_id'],
+                            'module_id'   => $key,
+                    ));
+                }
+            }
+
+
+            return redirect()->route('user.user-roles')->with('success','User Roles Saved Successfully');
+            
+
+
+        } 
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+
+    }
+
+    public function SearchPurchaseItems(Request $request){
+        try{
+            $input = $request->all();
+            // dd($input);
+            $product = $input['product'];
+            $supplier = $input['supplier'];
+            $start_date = $input['start_date'];
+            $end_date = $input['end_date'];
+            // if($input['name'])
+            if(empty($start_date) && empty($end_date)){
+                $purchase_data = DB::table('items')
+                ->join('supplier', 'items.supplier', '=', 'supplier.supplier_id')
+                // ->join('members', 'sales.member_id', '=', 'members.id')
+                ->select('items.*', 'supplier.supplier_id', 'supplier.supplier_name')
+                ->where('items.items', 'LIKE', "%$product%")
+                ->where('supplier.supplier_name', 'LIKE', "%$supplier%")
+                ->get();
+            }else{
+            $purchase_data = DB::table('items')
+            ->join('supplier', 'items.supplier', '=', 'supplier.supplier_id')
+            // ->join('members', 'sales.member_id', '=', 'members.id')
+            ->select('items.*', 'supplier.supplier_id', 'supplier.supplier_name')
+            ->where('items.items', 'LIKE', "%$product%")
+            ->where('supplier.supplier_name', 'LIKE', "%$supplier%")
+            ->whereBetween('items.created_at', [date('Y-m-d', strtotime($start_date)), date('Y-m-d', strtotime($end_date))])
+            ->get();
+            }
+            return view('purchase.view-purchase-items',compact('purchase_data', 'product', 'supplier', 'start_date', 'end_date'));
+        }
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+
+    public function SaveCafeteria(Request $request){
+        try{
+            $input = $request->all();
+            
+            if(Sales::insert([
+                'member_id'  => $input['Member'],
+                'type' 	 => 'cafeteria',
+                'item_id' => $input['Items'],
+                'qty' 	 => $input['item_qty'],
+                'batch'	 => $input['item_batch'],
+                'expiry_date'	=> $input['expiry_date'],
+                'volume'	 => $input['item_volume'],
+                'discount'	 => $input['discount'],
+                'sale_price'	 => $input['price_per_item'],
+                'purchase_price'	 => $input['Purchase_Price'],
+                'total_amount' => $input['total'],
+                'created_at' => date("Y-m-d H:i:s"),
+                'updated_at' => date("Y-m-d H:i:s"),
+            ]));
+            return redirect()->back()->withInput()->with('success','Sales Add Successfully.');
+        }
+        catch (Exception $e) 
+        {
+            return response()->json($e,500);
+        }
+    }
+}
